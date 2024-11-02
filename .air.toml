@@ -1,0 +1,17 @@
+# .air.toml
+# Configuration for air
+
+# The binary name of your application
+bin = "yingwu"
+
+# The command to run your application
+cmd = "go run main.go"
+
+# The directory to watch
+watch_dir = "."
+
+# Ignore files and directories (optional)
+ignore_dir = ["assets", "vendor"]
+
+# If your app is built with Go modules, set this to true
+use_modules = true
