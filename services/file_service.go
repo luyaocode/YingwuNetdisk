@@ -52,7 +52,7 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) error {
 	fileName := file.Filename
 	// 使用 GridFS 存储文件内容
 	bucket, err := gridfs.NewBucket(
-		config.MongoClient.Database("yingwu-netdisk"),
+		config.MongoClient.Database("yingwu"),
 		options.GridFSBucket().SetName("files"),
 	)
 	if err != nil {
