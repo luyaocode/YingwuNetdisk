@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 	"yingwu/config"
+	"yingwu/middleware"
 	"yingwu/services"
 
 	"github.com/gin-gonic/gin"
@@ -14,9 +15,11 @@ var sessionValidationEnabled = false
 func SetupRoutes(r *gin.Engine) {
     sessionService = services.NewSessionService(config.RedisClient)
 
-    r.POST("/upload", uploadMiddleware, services.UploadFile)
-    r.GET("/download/:hash", downloadMiddleware, services.DownloadFile)
-    r.GET("/files", services.GetAllFiles)
+    r.Use(middleware.CORSMiddleware())
+
+    r.POST("/files/upload", uploadMiddleware, services.UploadFile)
+    r.GET("/files/download/:hash", downloadMiddleware, services.DownloadFile)
+    r.GET("/allfiles", services.GetAllFiles)
 
 }
 
