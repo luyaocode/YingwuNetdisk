@@ -18,17 +18,14 @@ func main() {
 	routes.SetupRoutes(r)
 
 	// 启动服务器
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello, World!"))
-	})
 	env := flag.String("env", "dev", "set environment (dev or prod)")
 	flag.Parse()
 	if *env == "prod" {
 		log.Println("Starting production server on :8080")
 		log.Fatal(http.ListenAndServeTLS(":8080", "./ssl/server.pem",
-			"./ssl/server.key", nil))
+			"./ssl/server.key", r))
 	} else {
 		log.Println("Starting development server on :8080")
-		log.Fatal(http.ListenAndServe(":8080", nil))
+		log.Fatal(http.ListenAndServe(":8080", r))
 	}
 }
