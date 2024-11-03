@@ -185,7 +185,7 @@ func handleDownloadFile(c *gin.Context, fileID string, fileName string) error {
 
 	// 从 MongoDB 的 GridFS 中获取文件内容
 	bucket, err := gridfs.NewBucket(
-		config.MongoClient.Database("yingwu-netdisk"),
+		config.MongoClient.Database("yingwu"),
 		options.GridFSBucket().SetName("files"),
 	)
 	if err != nil {
