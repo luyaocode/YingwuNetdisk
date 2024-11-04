@@ -234,3 +234,10 @@ func GetAllFiles(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, files)
 }
+
+func Test(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"status":  "ok",
+		"message": "Server is running",
+	})
+}

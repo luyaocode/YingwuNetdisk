@@ -11,14 +11,15 @@ import (
 )
 
 func main() {
+	env := flag.String("env", "dev", "set environment (dev or prod)")
+
 	// 初始化数据库
 	config.Init()
 
 	r := gin.Default()
-	routes.SetupRoutes(r)
+	routes.SetupRoutes(r, *env)
 
 	// 启动服务器
-	env := flag.String("env", "dev", "set environment (dev or prod)")
 	flag.Parse()
 	if *env == "prod" {
 		log.Println("Starting production server on :8080")
