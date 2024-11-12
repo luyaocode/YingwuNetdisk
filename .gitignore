@@ -4,3 +4,5 @@ ssl/
 go.sum
 __debug*
 config.yaml
+
+deploy.sh

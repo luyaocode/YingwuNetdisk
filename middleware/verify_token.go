@@ -39,7 +39,7 @@ func VerifyToken() gin.HandlerFunc {
 		defer cancel()
 
 		// 使用 grpc.WithTransportCredentials(insecure.NewCredentials()) 代替 grpc.WithInsecure()
-		conn, err := grpc.DialContext(ctx, "localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials())) // 使用不安全的连接
+		conn, err := grpc.DialContext(ctx, "api.chaosgomoku.fun:50051", grpc.WithTransportCredentials(insecure.NewCredentials())) // 使用不安全的连接
 		if err != nil {
 			c.JSON(500, gin.H{"error": fmt.Sprintf("failed to connect to gRPC server: %v", err)})
 			c.Abort()

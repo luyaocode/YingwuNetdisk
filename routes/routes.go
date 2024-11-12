@@ -15,6 +15,9 @@ var sessionService *services.SessionService
 func SetupRoutes(r *gin.Engine, env string) {
 	sessionService = services.NewSessionService(config.RedisClient)
 
+	// 全局中间件
+	r.Use(middleware.CORSMiddleware())
+
 	r.POST("/files/upload", middleware.VerifyToken(), uploadMiddleware, services.UploadFile)
 	r.GET("/files/download/:hash", middleware.VerifyToken(), downloadMiddleware, services.DownloadFile)
 	r.GET("/allfiles", middleware.VerifyToken(), getAllFilesMiddleware, services.GetAllFiles)
