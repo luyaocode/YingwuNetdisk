@@ -2,8 +2,6 @@ module yingwu
 
 go 1.22.7
 
-toolchain go1.22.9
-
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-redis/redis/v8 v8.11.5
