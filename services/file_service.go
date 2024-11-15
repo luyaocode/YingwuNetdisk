@@ -205,12 +205,12 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) (string, strin
 		return "", "", err
 	}
 
-	// 查询 MySQL 中是否存在该哈希记录
-	var existingFile models.File
-	if err := config.MySQLDB.Where("hash = ?", hash).First(&existingFile).Error; err == nil {
-		log.Printf("File already exists: %v", existingFile)
-		return "", "", err
-	}
+	// // 查询 MySQL 中是否存在该哈希记录
+	// var existingFile models.File
+	// if err := config.MySQLDB.Where("hash = ?", hash).First(&existingFile).Error; err == nil {
+	// 	log.Printf("File already exists: %v", existingFile)
+	// 	return "", "", errors.New("文件已存在")
+	// }
 
 	nowtime := time.Now()
 	fileName := file.Filename
