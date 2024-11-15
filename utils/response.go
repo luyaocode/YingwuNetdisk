@@ -4,16 +4,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Respond(c *gin.Context, status int, key string, message string) {
-    c.JSON(status, gin.H{key: message})
+// Respond 用于统一响应接口，返回状态码、响应键和值
+func Respond(c *gin.Context, statusCode int, key string, data interface{}) {
+	c.JSON(statusCode, gin.H{
+		key: data,
+	})
 }
-
-func RespondWithFailures(c *gin.Context, status int, failureCount int, errorDetails []map[string]string) {
-    response := gin.H{
-        "failure_count": failureCount,
-        "errors":        errorDetails,
-    }
-    c.JSON(status, response)
-}
-
-

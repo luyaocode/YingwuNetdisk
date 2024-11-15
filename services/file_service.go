@@ -157,7 +157,10 @@ func writeMySQL(c *gin.Context, file *multipart.FileHeader, strFileID string,
 	return nil
 }
 
-func writeRedis(strFileID string, fileName string, hash string) error {
+/**
+* 返回文件标识，错误
+ */
+func writeRedis(strFileID string, fileName string, hash string) (string, error) {
 	redisKeyShort := "file_" + hash[:6]
 	// 将文件 ID 和文件名存储到 Redis 的哈希中
 	err := config.RedisClient.HMSet(context.TODO(), redisKeyShort, map[string]interface{}{
@@ -167,24 +170,27 @@ func writeRedis(strFileID string, fileName string, hash string) error {
 
 	if err != nil {
 		log.Printf("Failed to save hash to Redis: %v", err)
-		return err
+		return "", err
 	}
 	// 设置过期时间
 	err = config.RedisClient.Expire(context.TODO(), redisKeyShort, config.FileLiveTime).Err()
 	if err != nil {
 		log.Printf("Failed to set expiration time for Redis key: %v", err)
-		return err
+		return "", err
 	}
 
 	log.Printf("redis key: %s, file_id: %s, file_name: %s", redisKeyShort, strFileID, fileName)
-	return nil
+	return redisKeyShort, nil
 }
 
-func handleUploadFile(c *gin.Context, file *multipart.FileHeader) error {
+/**
+* 返回文件名，文件标识，错误
+ */
+func handleUploadFile(c *gin.Context, file *multipart.FileHeader) (string, string, error) {
 	// 打开文件
 	fileContent, err := file.Open()
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	defer fileContent.Close()
 
@@ -192,18 +198,18 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) error {
 	hashType := config.HashType
 	hash, err := utils.GenerateFileHash(hashType, fileContent)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	// 重置读指针复用fileContent
 	if _, err := fileContent.Seek(0, io.SeekStart); err != nil {
-		return err
+		return "", "", err
 	}
 
 	// 查询 MySQL 中是否存在该哈希记录
 	var existingFile models.File
 	if err := config.MySQLDB.Where("hash = ?", hash).First(&existingFile).Error; err == nil {
 		log.Printf("File already exists: %v", existingFile)
-		return err
+		return "", "", err
 	}
 
 	nowtime := time.Now()
@@ -211,21 +217,22 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) error {
 	fileID, err := saveFileToMongo(c, fileContent, fileName, nowtime)
 	if err != nil {
 		log.Printf("Failed to save file to Mongo: %v", err)
-		return err
+		return "", "", err
 	}
 	strFileID := fileID.Hex()
 
 	err = writeMySQL(c, file, strFileID, nowtime, hash)
 	if err != nil {
 		log.Printf("Failed to save record to MySQL: %v", err)
-		return err
+		return "", "", err
 	}
-	err = writeRedis(strFileID, fileName, hash)
+	var label string
+	label, err = writeRedis(strFileID, fileName, hash)
 	if err != nil {
 		log.Printf("Failed to save record to Redis: %v", err)
-		return err
+		return "", "", err
 	}
-	return nil
+	return fileName, label, nil
 }
 
 func UploadFile(c *gin.Context) {
@@ -244,11 +251,12 @@ func UploadFile(c *gin.Context) {
 	}
 
 	var errorDetails []map[string]string // 存储错误信息
-	failureCount := 0                    // 记录上传失败的个数
+	var successDetails []map[string]string
+	failureCount := 0 // 记录上传失败的个数
 
 	for _, file := range files {
 		// 处理每个文件
-		err := handleUploadFile(c, file) // 假设 handleFile 是处理文件的函数
+		fileName, label, err := handleUploadFile(c, file) // 假设 handleFile 是处理文件的函数
 		if err != nil {
 			errorDetail := map[string]string{
 				"id":     file.Filename, // 或者使用其他唯一标识符
@@ -256,15 +264,27 @@ func UploadFile(c *gin.Context) {
 			}
 			errorDetails = append(errorDetails, errorDetail)
 			failureCount++ // 增加失败计数
+		} else {
+			// 如果文件上传成功，收集文件名和标签
+			successDetail := map[string]string{
+				"fileName": fileName,
+				"label":    label,
+			}
+			successDetails = append(successDetails, successDetail)
 		}
 	}
 
 	// 返回结果
-	if failureCount == 0 {
-		utils.Respond(c, http.StatusOK, "message", "Successful.")
-	} else {
-		utils.RespondWithFailures(c, http.StatusOK, failureCount, errorDetails)
+	// 构造统一的返回结果
+	response := map[string]interface{}{
+		"successFiles": successDetails, // 上传成功的文件信息
+		"failureFiles": errorDetails,   // 上传失败的文件信息
+		"failureCount": failureCount,   // 失败的文件数量
+		"message":      "上传处理完成",       // 通用的响应消息
 	}
+
+	// 返回统一的 JSON 格式
+	utils.Respond(c, http.StatusOK, "result", response)
 }
 
 func getFileID(c *gin.Context) (string, string, error) {
