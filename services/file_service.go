@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"yingwu/config"
@@ -372,25 +373,82 @@ func DownloadFile(c *gin.Context) {
 	}
 }
 
+// func GetAllFiles(c *gin.Context) {
+// 	var files []models.File
+
+// 	userID, _ := c.Get("userID")
+// 	if userID == nil || userID == "guest" {
+// 		// 查询 expired_at 字段不为 NULL 的所有文件记录
+// 		if err := config.MySQLDB.Where("expired_at IS NOT NULL").Order("id DESC").Find(&files).Error; err != nil {
+// 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
+// 			return
+// 		}
+// 	} else {
+// 		// 查询所有文件记录
+// 		if err := config.MySQLDB.Order("id DESC").Find(&files).Error; err != nil {
+// 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
+// 			return
+// 		}
+// 	}
+
+// 	c.JSON(http.StatusOK, files)
+// }
+
 func GetAllFiles(c *gin.Context) {
 	var files []models.File
+	var totalCount int64
 
+	// 获取分页参数，设置默认值
+	page := c.DefaultQuery("page", "1")     // 默认页码为1
+	limit := c.DefaultQuery("limit", "100") // 默认每页100条记录
+
+	// 将页面和每页记录数转换为整数
+	pageNum, err := strconv.Atoi(page)
+	if err != nil || pageNum < 1 {
+		pageNum = 1 // 页码不能小于1
+	}
+
+	limitNum, err := strconv.Atoi(limit)
+	if err != nil || limitNum < 1 {
+		limitNum = 100 // 每页条数不能小于1
+	}
+
+	// 计算偏移量
+	offset := (pageNum - 1) * limitNum
+
+	// 获取用户信息
 	userID, _ := c.Get("userID")
 	if userID == nil || userID == "guest" {
 		// 查询 expired_at 字段不为 NULL 的所有文件记录
-		if err := config.MySQLDB.Where("expired_at IS NOT NULL").Order("id DESC").Find(&files).Error; err != nil {
+		if err := config.MySQLDB.Model(&models.File{}).Where("expired_at IS NOT NULL").Count(&totalCount).Error; err != nil {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
+			return
+		}
+
+		if err := config.MySQLDB.Where("expired_at IS NOT NULL").Order("id DESC").Limit(limitNum).Offset(offset).Find(&files).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
 			return
 		}
 	} else {
 		// 查询所有文件记录
-		if err := config.MySQLDB.Order("id DESC").Find(&files).Error; err != nil {
+		if err := config.MySQLDB.Model(&models.File{}).Count(&totalCount).Error; err != nil {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
+			return
+		}
+
+		if err := config.MySQLDB.Order("id DESC").Limit(limitNum).Offset(offset).Find(&files).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, files)
+	// 返回分页数据和总记录数
+	c.JSON(http.StatusOK, gin.H{
+		"files":      files,
+		"totalCount": totalCount,
+		"page":       pageNum,
+		"limit":      limitNum,
+	})
 }
 
 func Test(c *gin.Context) {

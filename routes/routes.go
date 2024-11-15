@@ -24,7 +24,7 @@ func SetupRoutes(r *gin.Engine, env string) {
 		middleware.VerifyToken(),
 		middleware.DownloadMiddleware(),
 		services.DownloadFile)
-	r.GET("/allfiles", middleware.VerifyToken(),
+	r.GET("/files", middleware.VerifyToken(),
 		middleware.GetAllFilesMiddleware(),
 		services.GetAllFiles)
 
