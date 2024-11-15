@@ -12,7 +12,7 @@ type File struct {
 	UploadedAt time.Time    `json:"uploaded_at"`
 	Hash       string       `json:"hash"`
 	FileID     string       `json:"-"` // GridFS中的fileID
-	ExpiredAt  sql.NullTime `json:"-"`
+	ExpiredAt  sql.NullTime `json:"expired_at"`
 }
 
 func (File) TableName() string {
