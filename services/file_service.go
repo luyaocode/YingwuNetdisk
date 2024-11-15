@@ -355,11 +355,21 @@ func DownloadFile(c *gin.Context) {
 func GetAllFiles(c *gin.Context) {
 	var files []models.File
 
-	// 查询所有文件记录
-	if err := config.MySQLDB.Order("id DESC").Find(&files).Error; err != nil {
-		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
-		return
+	userID, _ := c.Get("userID")
+	if userID == nil || userID == "guest" {
+		// 查询 expired_at 字段不为 NULL 的所有文件记录
+		if err := config.MySQLDB.Where("expired_at IS NOT NULL").Order("id DESC").Find(&files).Error; err != nil {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
+			return
+		}
+	} else {
+		// 查询所有文件记录
+		if err := config.MySQLDB.Order("id DESC").Find(&files).Error; err != nil {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
+			return
+		}
 	}
+
 	c.JSON(http.StatusOK, files)
 }
 
