@@ -15,12 +15,170 @@ import (
 	"yingwu/models"
 	"yingwu/utils"
 
+	"database/sql"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+func saveFileToMongo(c *gin.Context, fileContent multipart.File,
+	fileName string, nowTime time.Time) (primitive.ObjectID, error) {
+	userID, _ := c.Get("userID")
+
+	// 开始事务
+	session, err := config.MongoClient.StartSession()
+	if err != nil {
+		log.Printf("Failed to start session: %v", err)
+		return primitive.NilObjectID, err
+	}
+	defer session.EndSession(context.Background())
+
+	// 运行事务
+	err = session.StartTransaction()
+	if err != nil {
+		log.Printf("Failed to start transaction: %v", err)
+		return primitive.NilObjectID, err
+	}
+
+	// 使用 GridFS 存储文件内容
+	bucket, err := gridfs.NewBucket(
+		config.MongoClient.Database("yingwu"),
+	)
+	if err != nil {
+		log.Printf("Failed to create GridFS bucket %v", err)
+		session.AbortTransaction(context.Background())
+		return primitive.NilObjectID, err
+	}
+
+	// 上传文件内容到 GridFS
+	fileID, err := bucket.UploadFromStream(fileName, fileContent)
+	if err != nil {
+		log.Printf("Failed to upload file to GridFS: %v", err)
+		session.AbortTransaction(context.Background())
+		return primitive.NilObjectID, err
+	}
+
+	// 将文件记录插入到 MongoDB 中，并设置过期时间
+	if userID == nil || userID == "guest" {
+		collection := config.MongoClient.Database("yingwu").Collection("fs.files")
+		liveTime := config.FileLiveTime
+		expireTime := nowTime.Add(liveTime)
+
+		// 更新文件记录，设置过期时间
+		_, err = collection.UpdateOne(
+			context.Background(),
+			bson.M{"_id": fileID},
+			bson.M{
+				"$set": bson.M{
+					"expireAt": expireTime,
+				},
+			},
+		)
+		if err != nil {
+			log.Printf("Failed to update file %v with expiration date %v: %v", fileID, expireTime, err)
+			session.AbortTransaction(context.Background())
+			return primitive.NilObjectID, err
+		}
+
+		// 确保有 TTL 索引
+		_, err := collection.Indexes().CreateOne(
+			context.Background(),
+			mongo.IndexModel{
+				Keys:    bson.D{{Key: "expireAt", Value: 1}},      // 按 expireAt 字段创建索引
+				Options: options.Index().SetExpireAfterSeconds(0), // 设置 TTL
+			},
+		)
+		if err != nil {
+			log.Printf("Failed to create TTL index: %v", err)
+			session.AbortTransaction(context.Background())
+			return primitive.NilObjectID, err
+		}
+	}
+
+	// 提交事务
+	err = session.CommitTransaction(context.Background())
+	if err != nil {
+		log.Printf("Failed to commit transaction: %v", err)
+		return primitive.NilObjectID, err
+	}
+
+	return fileID, nil
+}
+
+func writeMySQL(c *gin.Context, file *multipart.FileHeader, strFileID string,
+	nowTime time.Time, hash string) error {
+
+	if !config.MySQLDB.HasTable(&models.File{}) {
+		// 表不存在，创建表
+		if err := config.MySQLDB.AutoMigrate(&models.File{}); err != nil {
+			log.Fatalf("failed to migrate database: %v", err)
+		}
+	}
+
+	// 在MySQL中保存文件元信息
+
+	userID, _ := c.Get("userID")
+	var expiredTime sql.NullTime
+	// 根据 userID 判断是否设置过期时间
+	if userID == nil || userID == "guest" {
+		// 如果是 "guest" 或 userID 为 nil，则设置有效的过期时间
+		expiredTime = sql.NullTime{
+			Time:  nowTime.Add(config.FileLiveTime),
+			Valid: true, // 有效时间
+		}
+	} else {
+		// 如果是其他用户，则将 expiredTime 设置为 NULL
+		expiredTime = sql.NullTime{
+			Valid: false, // 无效（NULL）
+		}
+	}
+
+	fileRecord := models.File{
+		Filename:   file.Filename,
+		Size:       file.Size,
+		UploadedAt: nowTime,
+		Hash:       hash,
+		FileID:     strFileID,
+		ExpiredAt:  expiredTime,
+	}
+	result := config.MySQLDB.Create(&fileRecord)
+	if result.Error != nil {
+		log.Printf("Error creating file record: %v", result.Error)
+		return result.Error
+	}
+
+	// 插入成功
+	log.Printf("MySQL: File record created successfully: %v", file.Filename)
+	return nil
+}
+
+func writeRedis(strFileID string, fileName string, hash string) error {
+	redisKeyShort := "file_" + hash[:6]
+	// 将文件 ID 和文件名存储到 Redis 的哈希中
+	err := config.RedisClient.HMSet(context.TODO(), redisKeyShort, map[string]interface{}{
+		"file_id":   strFileID,
+		"file_name": fileName,
+	}).Err()
+
+	if err != nil {
+		log.Printf("Failed to save hash to Redis: %v", err)
+		return err
+	}
+	// 设置过期时间
+	err = config.RedisClient.Expire(context.TODO(), redisKeyShort, config.FileLiveTime).Err()
+	if err != nil {
+		log.Printf("Failed to set expiration time for Redis key: %v", err)
+		return err
+	}
+
+	log.Printf("redis key: %s, file_id: %s, file_name: %s", redisKeyShort, strFileID, fileName)
+	return nil
+}
 
 func handleUploadFile(c *gin.Context, file *multipart.FileHeader) error {
 	// 打开文件
@@ -31,7 +189,7 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) error {
 	defer fileContent.Close()
 
 	// 计算文件的哈希
-	hashType := "md5"
+	hashType := config.HashType
 	hash, err := utils.GenerateFileHash(hashType, fileContent)
 	if err != nil {
 		return err
@@ -50,53 +208,23 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) error {
 
 	nowtime := time.Now()
 	fileName := file.Filename
-	// 使用 GridFS 存储文件内容
-	bucket, err := gridfs.NewBucket(
-		config.MongoClient.Database("yingwu"),
-		options.GridFSBucket().SetName("files"),
-	)
+	fileID, err := saveFileToMongo(c, fileContent, fileName, nowtime)
 	if err != nil {
-		log.Printf("Failed to create GridFS bucket %v", err)
+		log.Printf("Failed to save file to Mongo: %v", err)
 		return err
 	}
-
-	// 上传文件内容到 GridFS
-	fileID, err := bucket.UploadFromStream(fileName, fileContent)
 	strFileID := fileID.Hex()
+
+	err = writeMySQL(c, file, strFileID, nowtime, hash)
 	if err != nil {
+		log.Printf("Failed to save record to MySQL: %v", err)
 		return err
 	}
-
-	if !config.MySQLDB.HasTable(&models.File{}) {
-		// 表不存在，创建表
-		if err := config.MySQLDB.AutoMigrate(&models.File{}); err != nil {
-			log.Fatalf("failed to migrate database: %v", err)
-		}
-	}
-
-	// 在MySQL中保存文件元信息
-	fileRecord := models.File{
-		Filename:   file.Filename,
-		Size:       file.Size,
-		UploadedAt: nowtime,
-		Hash:       hash,
-		FileID:     strFileID,
-	}
-	config.MySQLDB.Create(&fileRecord)
-
-	redisKeyShort := "file_" + hash[:6]
-	// 将文件 ID 和文件名存储到 Redis 的哈希中
-	err = config.RedisClient.HMSet(context.TODO(), redisKeyShort, map[string]interface{}{
-		"file_id":   strFileID,
-		"file_name": fileName,
-	}).Err()
-
+	err = writeRedis(strFileID, fileName, hash)
 	if err != nil {
-		log.Printf("Failed to save hash to Redis: %v", err)
+		log.Printf("Failed to save record to Redis: %v", err)
 		return err
 	}
-
-	log.Printf("redis key: %s, file_id: %s, file_name: %s", redisKeyShort, strFileID, fileName)
 	return nil
 }
 
@@ -161,7 +289,8 @@ func getFileID(c *gin.Context) (string, string, error) {
 		log.Printf("File ID retrieved from Redis for key %s: %s, File Name: %s", redisKey, fileID, fileName)
 	} else if len(fileHash) >= 32 {
 		var file models.File
-		if err := config.MySQLDB.Where("hash = ?", fileHash).First(&file).Error; err != nil {
+		if err := config.MySQLDB.Where("hash = ? AND (expired_at > ? OR expired_at IS NULL)", fileHash, time.Now()).
+			First(&file).Error; err != nil {
 			log.Printf("Failed to retrieve file from MySQL: %v", err)
 			utils.Respond(c, http.StatusNotFound, "error", "Resource does not exist")
 			return "", "", err
@@ -186,7 +315,6 @@ func handleDownloadFile(c *gin.Context, fileID string, fileName string) error {
 	// 从 MongoDB 的 GridFS 中获取文件内容
 	bucket, err := gridfs.NewBucket(
 		config.MongoClient.Database("yingwu"),
-		options.GridFSBucket().SetName("files"),
 	)
 	if err != nil {
 		return err

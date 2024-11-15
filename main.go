@@ -6,11 +6,15 @@ import (
 	"net/http"
 	"yingwu/config"
 	"yingwu/routes"
+	"yingwu/scripts"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	// 启动定时任务
+	go scripts.CleanChunks()
+
 	env := flag.String("env", "dev", "set environment (dev or prod)")
 
 	// 初始化数据库

@@ -4,7 +4,7 @@ package middleware
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"time"
 	"yingwu/gen"
 
@@ -26,11 +26,8 @@ func VerifyToken() gin.HandlerFunc {
 		// 从请求的 cookie 中获取 token
 		token, err := c.Cookie("auth_token")
 		if err != nil {
-			// 如果没有找到 token 或发生错误，返回 401 错误
-			c.JSON(401, gin.H{
-				"error": "Token not found in cookies",
-			})
-			c.Abort()
+			c.Set("userID", "guest")
+			c.Next()
 			return
 		}
 
@@ -41,8 +38,8 @@ func VerifyToken() gin.HandlerFunc {
 		// 使用 grpc.WithTransportCredentials(insecure.NewCredentials()) 代替 grpc.WithInsecure()
 		conn, err := grpc.DialContext(ctx, "api.chaosgomoku.fun:50051", grpc.WithTransportCredentials(insecure.NewCredentials())) // 使用不安全的连接
 		if err != nil {
-			c.JSON(500, gin.H{"error": fmt.Sprintf("failed to connect to gRPC server: %v", err)})
-			c.Abort()
+			c.Set("userID", "guest")
+			c.Next()
 			return
 		}
 		defer conn.Close()
@@ -52,19 +49,62 @@ func VerifyToken() gin.HandlerFunc {
 
 		// 调用 VerifyToken 方法
 		resp, err := client.VerifyToken(context.Background(), &gen.VerifyTokenRequest{
-			Token: token, // 传入 JWT Token
+			Token: token,
 		})
 		if err != nil || !resp.GetValid() {
-			// 如果 token 无效，返回 401 错误
-			c.JSON(401, gin.H{
-				"error": "Invalid token",
-			})
-			c.Abort()
+			c.Set("userID", "guest")
+			c.Next()
 			return
 		}
 
 		// 如果 token 验证通过，将 userID 设置到上下文中
 		c.Set("userID", resp.GetUserId())
-		c.Next() // 继续处理请求
+		log.Printf("已授权：token=" + token)
+		log.Printf("欢迎" + resp.GetUserId())
+		c.Next()
 	}
+}
+
+// 上传中间件，验证会话
+func UploadMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+	}
+	// sessionID := c.GetHeader("Authorization")
+	// userID, err := sessionService.ValidateSession(sessionID)
+	// if err != nil {
+	// 	c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	// 	c.Abort()
+	// 	return
+	// }
+	// c.Set("userID", userID) // 将userID存入上下文
+}
+
+// 下载中间件，验证会话
+func DownloadMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+	}
+	// sessionID := c.GetHeader("Authorization")
+	// userID, err := sessionService.ValidateSession(sessionID)
+	// if err != nil {
+	// 	c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	// 	c.Abort()
+	// 	return
+	// }
+	// c.Set("userID", userID) // 将userID存入上下文
+}
+
+func GetAllFilesMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+	}
+	// sessionID := c.GetHeader("Authorization")
+	// userID, err := sessionService.ValidateSession(sessionID)
+	// if err != nil {
+	// 	c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	// 	c.Abort()
+	// 	return
+	// }
+	// c.Set("userID", userID) // 将userID存入上下文
 }
