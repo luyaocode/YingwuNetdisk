@@ -57,10 +57,9 @@ func VerifyToken() gin.HandlerFunc {
 			return
 		}
 
+		log.Printf("已授权：token=" + token)
 		// 如果 token 验证通过，将 userID 设置到上下文中
 		c.Set("userID", resp.GetUserId())
-		log.Printf("已授权：token=" + token)
-		log.Printf("欢迎" + resp.GetUserId())
 		c.Next()
 	}
 }
@@ -68,7 +67,11 @@ func VerifyToken() gin.HandlerFunc {
 // 上传中间件，验证会话
 func UploadMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		if ok {
+			log.Printf("用户[" + strUserID + "]开始上传")
+		}
 	}
 	// sessionID := c.GetHeader("Authorization")
 	// userID, err := sessionService.ValidateSession(sessionID)
@@ -83,7 +86,11 @@ func UploadMiddleware() gin.HandlerFunc {
 // 下载中间件，验证会话
 func DownloadMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		if ok {
+			log.Printf("用户[" + strUserID + "]开始下载")
+		}
 	}
 	// sessionID := c.GetHeader("Authorization")
 	// userID, err := sessionService.ValidateSession(sessionID)
@@ -97,7 +104,11 @@ func DownloadMiddleware() gin.HandlerFunc {
 
 func GetAllFilesMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		if ok {
+			log.Printf("用户[" + strUserID + "]开始查询")
+		}
 	}
 	// sessionID := c.GetHeader("Authorization")
 	// userID, err := sessionService.ValidateSession(sessionID)
