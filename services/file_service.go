@@ -418,13 +418,14 @@ func GetAllFiles(c *gin.Context) {
 	} else { // 授权用户
 		// 查询所有未过期（包含无限有效期）的文件记录
 		if err := config.MySQLDB.Model(&models.File{}).
-			Where("expired_at IS NULL OR (expired_at IS NOT NULL AND expired_at > NOW())").
+			Where("expired_at IS NULL OR expired_at > NOW()").
 			Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
 			return
 		}
 
 		if err := config.MySQLDB.
+			Where("expired_at IS NULL OR expired_at > NOW()").
 			Order("id DESC").
 			Limit(limitNum).
 			Offset(offset).
