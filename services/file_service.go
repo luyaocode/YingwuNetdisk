@@ -373,27 +373,6 @@ func DownloadFile(c *gin.Context) {
 	}
 }
 
-// func GetAllFiles(c *gin.Context) {
-// 	var files []models.File
-
-// 	userID, _ := c.Get("userID")
-// 	if userID == nil || userID == "guest" {
-// 		// 查询 expired_at 字段不为 NULL 的所有文件记录
-// 		if err := config.MySQLDB.Where("expired_at IS NOT NULL").Order("id DESC").Find(&files).Error; err != nil {
-// 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
-// 			return
-// 		}
-// 	} else {
-// 		// 查询所有文件记录
-// 		if err := config.MySQLDB.Order("id DESC").Find(&files).Error; err != nil {
-// 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
-// 			return
-// 		}
-// 	}
-
-// 	c.JSON(http.StatusOK, files)
-// }
-
 func GetAllFiles(c *gin.Context) {
 	var files []models.File
 	var totalCount int64
@@ -419,7 +398,7 @@ func GetAllFiles(c *gin.Context) {
 	// 获取用户信息
 	userID, _ := c.Get("userID")
 	if userID == nil || userID == "guest" || userID == "test" { //游客、测试
-		// 查询 expired_at 字段不为 NULL 且未过期的所有文件记录
+		// 查询有限有效期且未过期的所有文件记录
 		if err := config.MySQLDB.Model(&models.File{}).
 			Where("expired_at IS NOT NULL AND expired_at > NOW()").
 			Count(&totalCount).Error; err != nil {
@@ -437,8 +416,9 @@ func GetAllFiles(c *gin.Context) {
 			return
 		}
 	} else { // 授权用户
-		// 查询所有文件记录
+		// 查询所有未过期（包含无限有效期）的文件记录
 		if err := config.MySQLDB.Model(&models.File{}).
+			Where("expired_at IS NULL OR (expired_at IS NOT NULL AND expired_at > NOW())").
 			Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
 			return
