@@ -30,3 +30,8 @@ type DownFile struct {
 func (DownFile) TableName() string {
 	return "downloaded_files"
 }
+
+type FileWithDownloadInfo struct {
+	File
+	DownloadedAt time.Time `json:"downloaded_at"`
+}

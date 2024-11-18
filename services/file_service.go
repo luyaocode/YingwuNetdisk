@@ -460,7 +460,7 @@ func GetAllFiles(c *gin.Context) {
 }
 
 func GetDownloads(c *gin.Context) {
-	var files []models.File
+	var files []models.FileWithDownloadInfo
 	var totalCount int64
 
 	// 获取分页参数，设置默认值
@@ -488,13 +488,13 @@ func GetDownloads(c *gin.Context) {
 	}
 	userIDInt, _ := utils.AnyToInt64(userID)
 	err = config.MySQLDB.Table("downloaded_files").
-		Select("downloaded_files.downloaded_at, downloaded_files.*, files.filename, files.size, files.uploaded_at, files.uploaded_by, files.hash, files.file_id, files.expired_at").
+		Select("downloaded_files.downloaded_at, files.id, files.filename, files.size, files.uploaded_at, files.uploaded_by, files.hash, files.file_id, files.expired_at").
 		Joins("JOIN files ON downloaded_files.file_id = files.id").
 		Where("downloaded_files.downloaded_by = ?", userIDInt).
 		Order("downloaded_files.downloaded_at DESC").
 		Limit(limitNum).
 		Offset(offset).
-		Find(&files).Error
+		Scan(&files).Error
 
 	if err != nil {
 		log.Printf("Error querying down files: %v", err)
