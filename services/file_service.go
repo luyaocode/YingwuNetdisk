@@ -302,7 +302,7 @@ func getFileID(c *gin.Context) (uint, string, string, error) {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file information")
 			return fid, fileID, fileName, err
 		}
-		fid_uint64, err := strconv.ParseUint(fileInfo["fid"], 10, 64)
+		fid_uint64, _ := strconv.ParseUint(fileInfo["fid"], 10, 64)
 		fid = uint(fid_uint64)
 		fileID = fileInfo["file_id"]
 		fileName = fileInfo["file_name"]
