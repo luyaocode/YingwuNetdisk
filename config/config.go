@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"time"
+	"yingwu/models"
 
 	"github.com/go-redis/redis/v8"
 	_ "github.com/go-sql-driver/mysql"
@@ -50,6 +51,18 @@ func Init() {
 	MySQLDB, err = gorm.Open("mysql", mysqlDSN)
 	if err != nil {
 		log.Fatal("Failed to connect to MySQL: ", err)
+	}
+	if !MySQLDB.HasTable(&models.File{}) {
+		// 表不存在，创建表
+		if err := MySQLDB.AutoMigrate(&models.File{}); err != nil {
+			log.Fatalf("failed to migrate database: %v", err)
+		}
+	}
+	if !MySQLDB.HasTable(&models.DownFile{}) {
+		// 表不存在，创建表
+		if err := MySQLDB.AutoMigrate(&models.DownFile{}); err != nil {
+			log.Fatalf("failed to migrate database: %v", err)
+		}
 	}
 
 	// MongoDB 初始化

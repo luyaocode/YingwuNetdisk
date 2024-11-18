@@ -4,6 +4,7 @@ import (
 	"yingwu/config"
 	"yingwu/middleware"
 	"yingwu/services"
+	"yingwu/test"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,9 +28,15 @@ func SetupRoutes(r *gin.Engine, env string) {
 	r.GET("/files", middleware.VerifyToken(),
 		middleware.GetAllFilesMiddleware(),
 		services.GetAllFiles)
+	r.GET("/files/downloads", middleware.VerifyToken(),
+		middleware.GetDownFilesMiddleware(),
+		services.GetDownloads)
+	r.GET("/files/uploads", middleware.VerifyToken(),
+		middleware.GetUpFilesMiddleware(),
+		services.GetUploads)
 
 	if env == "dev" {
-		r.GET("/test", services.Test)
-		r.GET("/test_delay", services.TestDelay)
+		r.GET("/test", test.Test)
+		r.GET("/test_delay", test.TestDelay)
 	}
 }

@@ -112,17 +112,9 @@ func saveFileToMongo(c *gin.Context, fileContent multipart.File,
 }
 
 func writeMySQL(c *gin.Context, file *multipart.FileHeader, strFileID string,
-	nowTime time.Time, hash string) error {
-
-	if !config.MySQLDB.HasTable(&models.File{}) {
-		// 表不存在，创建表
-		if err := config.MySQLDB.AutoMigrate(&models.File{}); err != nil {
-			log.Fatalf("failed to migrate database: %v", err)
-		}
-	}
-
+	nowTime time.Time, hash string) (uint, error) {
+	var fid uint = 0
 	// 在MySQL中保存文件元信息
-
 	userID, _ := c.Get("userID")
 	var expiredTime sql.NullTime
 	// 根据 userID 判断是否设置过期时间
@@ -138,11 +130,12 @@ func writeMySQL(c *gin.Context, file *multipart.FileHeader, strFileID string,
 			Valid: false, // 无效（NULL）
 		}
 	}
-
+	nUserID, _ := utils.AnyToInt64(userID)
 	fileRecord := models.File{
 		Filename:   file.Filename,
 		Size:       file.Size,
 		UploadedAt: nowTime,
+		UploadedBy: nUserID,
 		Hash:       hash,
 		FileID:     strFileID,
 		ExpiredAt:  expiredTime,
@@ -150,22 +143,24 @@ func writeMySQL(c *gin.Context, file *multipart.FileHeader, strFileID string,
 	result := config.MySQLDB.Create(&fileRecord)
 	if result.Error != nil {
 		log.Printf("Error creating file record: %v", result.Error)
-		return result.Error
+		return fid, result.Error
 	}
 
 	// 插入成功
+	fid = fileRecord.ID
 	log.Printf("MySQL: File record created successfully: %v", file.Filename)
-	return nil
+	return fid, nil
 }
 
 /**
 * 返回文件标识，错误
  */
-func writeRedis(strFileID string, fileName string, hash string) (string, error) {
+func writeRedis(fid uint, strFileID string, fileName string, hash string) (string, error) {
 	redisKeyShort := "file_" + hash[:6]
 	// 将文件 ID 和文件名存储到 Redis 的哈希中
 	err := config.RedisClient.HMSet(context.TODO(), redisKeyShort, map[string]interface{}{
-		"file_id":   strFileID,
+		"fid":       fid,       // mysql 主键
+		"file_id":   strFileID, // Gridfs id
 		"file_name": fileName,
 	}).Err()
 
@@ -188,10 +183,12 @@ func writeRedis(strFileID string, fileName string, hash string) (string, error) 
 * 返回文件名，文件标识，错误
  */
 func handleUploadFile(c *gin.Context, file *multipart.FileHeader) (string, string, error) {
+	var fileName string = ""
+	var label string = ""
 	// 打开文件
 	fileContent, err := file.Open()
 	if err != nil {
-		return "", "", err
+		return fileName, label, err
 	}
 	defer fileContent.Close()
 
@@ -199,11 +196,11 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) (string, strin
 	hashType := config.HashType
 	hash, err := utils.GenerateFileHash(hashType, fileContent)
 	if err != nil {
-		return "", "", err
+		return fileName, label, err
 	}
 	// 重置读指针复用fileContent
 	if _, err := fileContent.Seek(0, io.SeekStart); err != nil {
-		return "", "", err
+		return fileName, label, err
 	}
 
 	// // 查询 MySQL 中是否存在该哈希记录
@@ -214,24 +211,23 @@ func handleUploadFile(c *gin.Context, file *multipart.FileHeader) (string, strin
 	// }
 
 	nowtime := time.Now()
-	fileName := file.Filename
+	fileName = file.Filename
 	fileID, err := saveFileToMongo(c, fileContent, fileName, nowtime)
 	if err != nil {
 		log.Printf("Failed to save file to Mongo: %v", err)
-		return "", "", err
+		return fileName, label, err
 	}
 	strFileID := fileID.Hex()
 
-	err = writeMySQL(c, file, strFileID, nowtime, hash)
+	fid, err := writeMySQL(c, file, strFileID, nowtime, hash)
 	if err != nil {
 		log.Printf("Failed to save record to MySQL: %v", err)
-		return "", "", err
+		return fileName, label, err
 	}
-	var label string
-	label, err = writeRedis(strFileID, fileName, hash)
+	label, err = writeRedis(fid, strFileID, fileName, hash)
 	if err != nil {
 		log.Printf("Failed to save record to Redis: %v", err)
-		return "", "", err
+		return fileName, label, err
 	}
 	return fileName, label, nil
 }
@@ -288,10 +284,11 @@ func UploadFile(c *gin.Context) {
 	utils.Respond(c, http.StatusOK, "result", response)
 }
 
-func getFileID(c *gin.Context) (string, string, error) {
+func getFileID(c *gin.Context) (uint, string, string, error) {
 	fileHash := c.Param("hash")
-	var fileID string
-	var fileName string
+	var fid uint = 0
+	var fileID string = ""
+	var fileName string = ""
 	if len(fileHash) == 6 {
 		// 从 Redis 获取上传者信息
 		redisKey := "file_" + fileHash
@@ -299,12 +296,14 @@ func getFileID(c *gin.Context) (string, string, error) {
 		if err == redis.Nil {
 			log.Printf("Error retrieving key from Redis: %v", err)
 			utils.Respond(c, http.StatusNotFound, "error", "File has expired or does not exist")
-			return "", "", err
+			return fid, fileID, fileName, err
 		} else if err != nil {
 			log.Printf("Failed to get file ID from Redis: %v", err)
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file information")
-			return "", "", err
+			return fid, fileID, fileName, err
 		}
+		fid_uint64, err := strconv.ParseUint(fileInfo["fid"], 10, 64)
+		fid = uint(fid_uint64)
 		fileID = fileInfo["file_id"]
 		fileName = fileInfo["file_name"]
 		log.Printf("File ID retrieved from Redis for key %s: %s, File Name: %s", redisKey, fileID, fileName)
@@ -314,19 +313,21 @@ func getFileID(c *gin.Context) (string, string, error) {
 			First(&file).Error; err != nil {
 			log.Printf("Failed to retrieve file from MySQL: %v", err)
 			utils.Respond(c, http.StatusNotFound, "error", "Resource does not exist")
-			return "", "", err
+			return fid, fileID, fileName, err
+
 		}
+		fid = file.ID
 		fileID = file.FileID     // 获取文件 ID
 		fileName = file.Filename // 获取文件名
 	} else {
 		log.Printf("Error: Hash length is invalid.")
-		return "", "", errors.New("invalid hash length")
+		return fid, fileID, fileName, errors.New("invalid hash length")
 	}
 
-	return fileID, fileName, nil
+	return fid, fileID, fileName, nil
 }
 
-func handleDownloadFile(c *gin.Context, fileID string, fileName string) error {
+func handleDownloadFile(c *gin.Context, fid uint, fileID string, fileName string) error {
 	// 将 fileID 转换为 MongoDB 的 ObjectID 类型
 	objectID, err := primitive.ObjectIDFromHex(fileID)
 	if err != nil {
@@ -358,16 +359,30 @@ func handleDownloadFile(c *gin.Context, fileID string, fileName string) error {
 	if err != nil {
 		return err
 	}
+
+	// 将下载记录写入MySQL
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+	fileRecord := models.DownFile{
+		FileID:       fid,
+		DownloadedAt: time.Now(),
+		DownloadedBy: nUserID,
+	}
+	result := config.MySQLDB.Create(&fileRecord)
+	if result.Error != nil {
+		log.Printf("Error creating file record: %v", result.Error)
+		return result.Error
+	}
 	return nil
 }
 
 func DownloadFile(c *gin.Context) {
-	fileID, fileName, err := getFileID(c)
+	fid, fileID, fileName, err := getFileID(c)
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file")
 		return
 	}
-	err = handleDownloadFile(c, fileID, fileName)
+	err = handleDownloadFile(c, fid, fileID, fileName)
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to download file")
 	}
@@ -444,18 +459,137 @@ func GetAllFiles(c *gin.Context) {
 	})
 }
 
-func Test(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "Server is running",
+func GetDownloads(c *gin.Context) {
+	var files []models.File
+	var totalCount int64
+
+	// 获取分页参数，设置默认值
+	page := c.DefaultQuery("page", "1")     // 默认页码为1
+	limit := c.DefaultQuery("limit", "100") // 默认每页100条记录
+
+	// 将页面和每页记录数转换为整数
+	pageNum, err := strconv.Atoi(page)
+	if err != nil || pageNum < 1 {
+		pageNum = 1 // 页码不能小于1
+	}
+
+	limitNum, err := strconv.Atoi(limit)
+	if err != nil || limitNum < 1 {
+		limitNum = 100 // 每页条数不能小于1
+	}
+
+	// 计算偏移量
+	offset := (pageNum - 1) * limitNum
+
+	// 获取用户信息
+	userID, _ := c.Get("userID")
+	if userID == nil || userID == "guest" || userID == "test" { //游客、测试
+		return
+	}
+	userIDInt, _ := utils.AnyToInt64(userID)
+	err = config.MySQLDB.Table("down_files").
+		Select("down_files.*, files.filename, files.size, files.uploaded_at, files.uploaded_by, files.hash, files.file_id, files.expired_at").
+		Joins("JOIN files ON down_files.file_id = files.id").
+		Where("down_files.downloaded_by = ?", userIDInt).
+		Order("down_files.downloaded_at DESC").
+		Limit(limitNum).
+		Offset(offset).
+		Find(&files).Error
+
+	if err != nil {
+		log.Printf("Error querying down files: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Error querying download records",
+		})
+		return
+	}
+
+	// 获取总记录数
+	err = config.MySQLDB.Table("down_files").
+		Joins("JOIN files ON down_files.file_id = files.id").
+		Where("down_files.downloaded_by = ?", userID).
+		Count(&totalCount).Error
+
+	if err != nil {
+		log.Printf("Error counting total down files: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Error counting download records",
+		})
+		return
+	}
+
+	// 返回分页数据和总记录数
+	c.JSON(http.StatusOK, gin.H{
+		"files":      files,
+		"totalCount": totalCount,
+		"page":       pageNum,
+		"limit":      limitNum,
 	})
 }
 
-func TestDelay(c *gin.Context) {
-	// 模拟延迟
-	time.Sleep(100 * time.Millisecond)
-	c.JSON(200, gin.H{
-		"status":  "ok",
-		"message": "Server is running",
+func GetUploads(c *gin.Context) {
+	var files []models.File
+	var totalCount int64
+
+	// 获取分页参数，设置默认值
+	page := c.DefaultQuery("page", "1")     // 默认页码为1
+	limit := c.DefaultQuery("limit", "100") // 默认每页100条记录
+
+	// 将页面和每页记录数转换为整数
+	pageNum, err := strconv.Atoi(page)
+	if err != nil || pageNum < 1 {
+		pageNum = 1 // 页码不能小于1
+	}
+
+	limitNum, err := strconv.Atoi(limit)
+	if err != nil || limitNum < 1 {
+		limitNum = 100 // 每页条数不能小于1
+	}
+
+	// 计算偏移量
+	offset := (pageNum - 1) * limitNum
+
+	// 获取用户信息
+	userID, _ := c.Get("userID")
+	if userID == nil || userID == "guest" || userID == "test" { //游客、测试
+		// ..
+		return
+	}
+	userIDInt, _ := utils.AnyToInt64(userID)
+	// 查询UploadedBy=userID的记录，按ID逆序排序
+	err = config.MySQLDB.Table("files").
+		Where("uploaded_by = ?", userIDInt).
+		Order("id DESC").
+		Limit(limitNum).
+		Offset(offset).
+		Find(&files).Error
+
+	if err != nil {
+		log.Printf("Error querying uploaded files: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Error querying upload records",
+		})
+		return
+	}
+
+	// 获取总记录数
+	err = config.MySQLDB.Table("files").
+		Where("uploaded_by = ?", userID).
+		Count(&totalCount).Error
+
+	if err != nil {
+		log.Printf("Error counting total uploaded files: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Error counting upload records",
+		})
+		return
+	}
+
+	// 返回分页数据和总记录数
+	c.JSON(http.StatusOK, gin.H{
+		"files":      files,
+		"totalCount": totalCount,
+		"page":       pageNum,
+		"limit":      limitNum,
 	})
 }
