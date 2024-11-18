@@ -80,7 +80,7 @@ func GetUpFilesMiddleware() gin.HandlerFunc {
 		userID, _ := c.Get("userID")
 		strUserID, ok := userID.(string)
 		if !ok || strUserID == "" || userID == "guest" || userID == "test" {
-			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve downloaded files.")
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve uploaded files.")
 			return
 		}
 	}

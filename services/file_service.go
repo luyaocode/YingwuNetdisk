@@ -487,11 +487,11 @@ func GetDownloads(c *gin.Context) {
 		return
 	}
 	userIDInt, _ := utils.AnyToInt64(userID)
-	err = config.MySQLDB.Table("down_files").
-		Select("down_files.*, files.filename, files.size, files.uploaded_at, files.uploaded_by, files.hash, files.file_id, files.expired_at").
-		Joins("JOIN files ON down_files.file_id = files.id").
-		Where("down_files.downloaded_by = ?", userIDInt).
-		Order("down_files.downloaded_at DESC").
+	err = config.MySQLDB.Table("downloaded_files").
+		Select("downloaded_files.*, files.filename, files.size, files.uploaded_at, files.uploaded_by, files.hash, files.file_id, files.expired_at").
+		Joins("JOIN files ON downloaded_files.file_id = files.id").
+		Where("downloaded_files.downloaded_by = ?", userIDInt).
+		Order("downloaded_files.downloaded_at DESC").
 		Limit(limitNum).
 		Offset(offset).
 		Find(&files).Error
@@ -505,9 +505,9 @@ func GetDownloads(c *gin.Context) {
 	}
 
 	// 获取总记录数
-	err = config.MySQLDB.Table("down_files").
-		Joins("JOIN files ON down_files.file_id = files.id").
-		Where("down_files.downloaded_by = ?", userID).
+	err = config.MySQLDB.Table("downloaded_files").
+		Joins("JOIN files ON downloaded_files.file_id = files.id").
+		Where("downloaded_files.downloaded_by = ?", userID).
 		Count(&totalCount).Error
 
 	if err != nil {
