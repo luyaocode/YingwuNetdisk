@@ -85,3 +85,14 @@ func GetUpFilesMiddleware() gin.HandlerFunc {
 		}
 	}
 }
+
+// 获取文件下载量排名
+func GetDownFilesRankMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		if ok {
+			log.Printf("用户[" + strUserID + "]开始查询")
+		}
+	}
+}

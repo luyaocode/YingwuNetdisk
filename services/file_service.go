@@ -593,3 +593,33 @@ func GetUploads(c *gin.Context) {
 		"limit":      limitNum,
 	})
 }
+
+func GetDownFileRank(c *gin.Context) {
+	var result []struct {
+		FileID        uint   `json:"file_id"`
+		Filename      string `json:"filename"`
+		DownloadCount int64  `json:"download_count"`
+	}
+
+	// 执行联合查询，获取下载量排名
+	err := config.MySQLDB.Table("downloaded_files").
+		Select("files.id as file_id, files.filename, COUNT(downloaded_files.id) as download_count").
+		Joins("JOIN files ON downloaded_files.file_id = files.id").
+		Where("files.expired_at IS NOT NULL AND files.expired_at > ?", time.Now()). // 过滤未过期的文件
+		Group("files.id").                                                          // 按文件ID分组
+		Order("download_count DESC").                                               // 下载量降序排序
+		Find(&result).Error
+
+	if err != nil {
+		log.Printf("Error querying download file rank: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Error querying download file rank",
+		})
+		return
+	}
+
+	// 返回结果
+	c.JSON(http.StatusOK, gin.H{
+		"files": result,
+	})
+}

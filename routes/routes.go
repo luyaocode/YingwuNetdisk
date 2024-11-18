@@ -34,6 +34,9 @@ func SetupRoutes(r *gin.Engine, env string) {
 	r.GET("/files/uploads", middleware.VerifyToken(),
 		middleware.GetUpFilesMiddleware(),
 		services.GetUploads)
+	r.GET("/files/downloadRank", middleware.VerifyToken(),
+		middleware.GetDownFilesRankMiddleware(),
+		services.GetDownFileRank)
 
 	if env == "dev" {
 		r.GET("/test", test.Test)
