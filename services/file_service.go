@@ -608,6 +608,7 @@ func GetDownFileRank(c *gin.Context) {
 		Where("files.expired_at IS NOT NULL AND files.expired_at > ?", time.Now()). // 过滤未过期的文件
 		Group("files.id").                                                          // 按文件ID分组
 		Order("download_count DESC").                                               // 下载量降序排序
+		Limit(10).
 		Find(&result).Error
 
 	if err != nil {
