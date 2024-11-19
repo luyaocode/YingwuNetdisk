@@ -442,7 +442,7 @@ func GetAllFiles(c *gin.Context) {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
 			return
 		}
-	} else { // 授权用户
+	} else if userID == config.MyGithubID { // 系统管理员
 		// 查询所有未过期（包含无限有效期）的文件记录
 		if err := config.MySQLDB.Model(&models.File{}).
 			Where("expired_at IS NULL OR expired_at > NOW()").
@@ -453,6 +453,24 @@ func GetAllFiles(c *gin.Context) {
 
 		if err := config.MySQLDB.
 			Where("expired_at IS NULL OR expired_at > NOW()").
+			Order("id DESC").
+			Limit(limitNum).
+			Offset(offset).
+			Find(&files).Error; err != nil {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve files")
+			return
+		}
+	} else { // 普通会员
+		// 查询所有未过期（包含无限有效期）的，且上传者为本人的文件记录
+		if err := config.MySQLDB.Model(&models.File{}).
+			Where("(expired_at IS NULL OR expired_at > NOW()) AND uploaded_by = ?", userID).
+			Count(&totalCount).Error; err != nil {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
+			return
+		}
+
+		if err := config.MySQLDB.
+			Where("(expired_at IS NULL OR expired_at > NOW()) AND uploaded_by = ?", userID).
 			Order("id DESC").
 			Limit(limitNum).
 			Offset(offset).

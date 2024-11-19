@@ -28,6 +28,8 @@ var (
 	MongoClient *mongo.Client
 	RedisClient *redis.Client
 	ctx         = context.Background()
+
+	MyGithubID string
 )
 
 func Init() {
@@ -41,6 +43,9 @@ func Init() {
 	if err := viper.ReadInConfig(); err != nil {
 		log.Fatalf("Error reading config file, %s", err)
 	}
+
+	// 变量初始化
+	MyGithubID = viper.GetString("MyGithubID")
 
 	// MySQL 初始化
 	mysqlConfig := viper.Sub("mysql")
