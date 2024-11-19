@@ -21,6 +21,11 @@ const (
 	// 临时文件保留时间
 	FileLiveTime = 8 * time.Hour
 	HashType     = "md5"
+
+	//
+	Role_Test  = -2
+	Role_Guest = -3
+	Role_Other = -1
 )
 
 var (

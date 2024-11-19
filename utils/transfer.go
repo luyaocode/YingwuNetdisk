@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"strconv"
+	"yingwu/config"
 )
 
 // 封装函数：将 any 转为 int
@@ -14,11 +15,11 @@ func AnyToInt64(value any) (int64, error) {
 		intValue, err := strconv.Atoi(v)
 		if err != nil {
 			if v == "test" {
-				return -2, err
+				return config.Role_Test, err
 			} else if v == "guest" {
-				return -3, err
+				return config.Role_Guest, err
 			}
-			return -1, err
+			return config.Role_Other, err
 		}
 		return int64(intValue), nil
 	default:

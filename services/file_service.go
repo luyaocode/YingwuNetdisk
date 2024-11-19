@@ -118,14 +118,14 @@ func writeMySQL(c *gin.Context, file *multipart.FileHeader, strFileID string,
 	userID, _ := c.Get("userID")
 	var expiredTime sql.NullTime
 	// 根据 userID 判断是否设置过期时间
-	if userID == nil || userID == "guest" {
+	if userID != config.MyGithubID { // 非管理员文件有效期限制
 		// 如果是 "guest" 或 userID 为 nil，则设置有效的过期时间
 		expiredTime = sql.NullTime{
 			Time:  nowTime.Add(config.FileLiveTime),
 			Valid: true, // 有效时间
 		}
 	} else {
-		// 如果是其他用户，则将 expiredTime 设置为 NULL
+		// 如果是管理员，则将 expiredTime 设置为 NULL
 		expiredTime = sql.NullTime{
 			Valid: false, // 无效（NULL）
 		}
@@ -461,16 +461,17 @@ func GetAllFiles(c *gin.Context) {
 			return
 		}
 	} else { // 普通会员
+		nUserID, _ := utils.AnyToInt64(userID)
 		// 查询所有未过期（包含无限有效期）的，且上传者为本人的文件记录
 		if err := config.MySQLDB.Model(&models.File{}).
-			Where("(expired_at IS NULL OR expired_at > NOW()) AND uploaded_by = ?", userID).
+			Where("expired_at IS NOT NULL AND expired_at > NOW() AND (uploaded_by < 0 OR uploaded_by = ?)", nUserID).
 			Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
 			return
 		}
 
 		if err := config.MySQLDB.
-			Where("(expired_at IS NULL OR expired_at > NOW()) AND uploaded_by = ?", userID).
+			Where("expired_at IS NOT NULL AND expired_at > NOW() AND (uploaded_by < 0 OR uploaded_by = ?)", nUserID).
 			Order("id DESC").
 			Limit(limitNum).
 			Offset(offset).
