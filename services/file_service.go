@@ -427,14 +427,14 @@ func GetAllFiles(c *gin.Context) {
 	if userID == nil || userID == "guest" || userID == "test" { //游客、测试
 		// 查询有限有效期且未过期的所有文件记录
 		if err := config.MySQLDB.Model(&models.File{}).
-			Where("expired_at IS NOT NULL AND expired_at > NOW()").
+			Where("expired_at IS NOT NULL AND expired_at > NOW() AND uploaded_by < 0").
 			Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
 			return
 		}
 
 		if err := config.MySQLDB.
-			Where("expired_at IS NOT NULL AND expired_at > NOW()").
+			Where("expired_at IS NOT NULL AND expired_at > NOW() AND uploaded_by < 0").
 			Order("id DESC").
 			Limit(limitNum).
 			Offset(offset).
