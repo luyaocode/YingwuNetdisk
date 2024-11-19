@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	// 设置日志
+	config.SetLog()
+
 	// 启动定时任务
 	go scripts.CleanChunks()
 

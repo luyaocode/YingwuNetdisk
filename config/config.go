@@ -2,7 +2,9 @@ package config
 
 import (
 	"context"
+	"io"
 	"log"
+	"os"
 	"time"
 	"yingwu/models"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -84,4 +87,22 @@ func Init() {
 	if err != nil {
 		log.Fatal("Failed to connect to Redis: ", err)
 	}
+}
+
+func SetLog() {
+	// 配置日志分割
+	logFile := &lumberjack.Logger{
+		Filename:   "./logs/app.log", // 日志文件路径
+		MaxSize:    10,               // 单个日志文件最大大小 (单位：MB)
+		MaxBackups: 7,                // 最多保留的旧日志文件个数
+		MaxAge:     30,               // 日志文件保存的最大天数
+		Compress:   true,             // 是否启用压缩旧日志文件
+	}
+
+	// 创建 MultiWriter，用于同时输出到控制台和日志文件
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+
+	// 设置 log 包的默认输出
+	log.SetOutput(multiWriter)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile) // 设置日志格式
 }
