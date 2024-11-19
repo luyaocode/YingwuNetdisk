@@ -327,7 +327,7 @@ func getFileID(c *gin.Context) (uint, string, string, error) {
 	return fid, fileID, fileName, nil
 }
 
-func handleDownloadFile(c *gin.Context, fid uint, fileID string, fileName string) error {
+func handleDownloadFile(c *gin.Context, fileID string, fileName string) error {
 	// 将 fileID 转换为 MongoDB 的 ObjectID 类型
 	objectID, err := primitive.ObjectIDFromHex(fileID)
 	if err != nil {
@@ -359,6 +359,19 @@ func handleDownloadFile(c *gin.Context, fid uint, fileID string, fileName string
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func DownloadFile(c *gin.Context) {
+	fid, fileID, fileName, err := getFileID(c)
+	if err != nil {
+		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file")
+		return
+	}
+	err = handleDownloadFile(c, fileID, fileName)
+	if err != nil {
+		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to download file")
+	}
 
 	// 将下载记录写入MySQL
 	userID, _ := c.Get("userID")
@@ -371,20 +384,19 @@ func handleDownloadFile(c *gin.Context, fid uint, fileID string, fileName string
 	result := config.MySQLDB.Create(&fileRecord)
 	if result.Error != nil {
 		log.Printf("Error creating file record: %v", result.Error)
-		return result.Error
+		return
 	}
-	return nil
 }
 
-func DownloadFile(c *gin.Context) {
-	fid, fileID, fileName, err := getFileID(c)
+func PreviewFile(c *gin.Context) {
+	_, fileID, fileName, err := getFileID(c)
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file")
 		return
 	}
-	err = handleDownloadFile(c, fid, fileID, fileName)
+	err = handleDownloadFile(c, fileID, fileName)
 	if err != nil {
-		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to download file")
+		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to preview file")
 	}
 }
 
