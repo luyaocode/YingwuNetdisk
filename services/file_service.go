@@ -544,6 +544,7 @@ func DownloadFile(c *gin.Context) {
 	err = handleDownloadFile(c, fileID, fileName)
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to download file")
+		return
 	}
 
 	// 将下载记录写入MySQL
