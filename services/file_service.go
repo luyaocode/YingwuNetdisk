@@ -111,6 +111,73 @@ func saveFileToMongo(c *gin.Context, fileContent multipart.File,
 	return fileID, nil
 }
 
+func deleteFromMongo(fileID string) error {
+	objectID, err := primitive.ObjectIDFromHex(fileID)
+	if err != nil {
+		return err
+	}
+	// 开始事务
+	session, err := config.MongoClient.StartSession()
+	if err != nil {
+		log.Printf("Failed to start session: %v", err)
+		return err
+	}
+	defer session.EndSession(context.Background())
+
+	// 运行事务
+	err = session.StartTransaction()
+	if err != nil {
+		log.Printf("Failed to start transaction: %v", err)
+		return err
+	}
+
+	// 确保 GridFS 存储文件的删除
+	bucket, err := gridfs.NewBucket(
+		config.MongoClient.Database("yingwu"),
+	)
+	if err != nil {
+		log.Printf("Failed to create GridFS bucket: %v", err)
+		session.AbortTransaction(context.Background())
+		return err
+	}
+
+	// 删除 GridFS 中的文件
+	err = bucket.Delete(objectID)
+	if err != nil {
+		log.Printf("Failed to delete file from GridFS: %v", err)
+		session.AbortTransaction(context.Background())
+		return err
+	}
+
+	// 删除 MongoDB 中的文件记录
+	collection := config.MongoClient.Database("yingwu").Collection("fs.files")
+	result, err := collection.DeleteOne(
+		context.Background(),
+		bson.M{"_id": objectID},
+	)
+	if err != nil {
+		log.Printf("Failed to delete file record from MongoDB: %v", err)
+		session.AbortTransaction(context.Background())
+		return err
+	}
+
+	// 如果没有记录删除，仅记录日志，跳过错误返回
+	if result.DeletedCount == 0 {
+		log.Printf("No file record found with ID: %v. Skipping deletion.", fileID)
+	} else {
+		log.Printf("Successfully deleted file record with ID: %v", fileID)
+	}
+
+	// 提交事务
+	err = session.CommitTransaction(context.Background())
+	if err != nil {
+		log.Printf("Failed to commit transaction: %v", err)
+		return err
+	}
+
+	return nil
+}
+
 func writeMySQL(c *gin.Context, file *multipart.FileHeader, strFileID string,
 	nowTime time.Time, hash string) (uint, error) {
 	var fid uint = 0
@@ -162,6 +229,7 @@ func writeRedis(fid uint, strFileID string, fileName string, hash string) (strin
 		"fid":       fid,       // mysql 主键
 		"file_id":   strFileID, // Gridfs id
 		"file_name": fileName,
+		"hash":      hash,
 	}).Err()
 
 	if err != nil {
@@ -282,6 +350,111 @@ func UploadFile(c *gin.Context) {
 
 	// 返回统一的 JSON 格式
 	utils.Respond(c, http.StatusOK, "result", response)
+}
+
+func handleDeleteFile(c *gin.Context, hash string) error {
+	fileID, hash32, err := getFileIDByHash(c, hash)
+	if err != nil {
+		return err
+	}
+	err = deleteFromMongo(fileID)
+	if err != nil {
+		return err
+	}
+	// 返回来删除MySQL和Redis记录
+	result := config.MySQLDB.Where("hash = ?", hash).
+		Delete(&models.File{})
+	if result.Error != nil {
+		log.Printf("Error deleting file records with hash %s: %v", hash, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		log.Printf("No file records found with hash %s", hash)
+	} else {
+		log.Printf("Successfully deleted %d file records with hash %s", result.RowsAffected, hash)
+	}
+	// 使用 Redis 客户端删除指定的键
+	redisKeyShort := "file_" + hash32[:6]
+	err = config.RedisClient.Del(context.TODO(), hash32).Err()
+	if err != nil {
+		log.Printf("Failed to delete Redis key %s: %v", redisKeyShort, err)
+	} else {
+		log.Printf("Successfully deleted Redis key: %s", redisKeyShort)
+	}
+	return nil
+}
+
+func DeleteFile(c *gin.Context) {
+	var requestBody struct {
+		FileIDs []string `json:"fileIDs"`
+	}
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		utils.Respond(c, http.StatusBadRequest, "error", map[string]string{"message": "Invalid request body"})
+		return
+	}
+
+	var errorDetails []map[string]string
+	var successDetails []map[string]string
+	failureCount := 0
+	for _, hash := range requestBody.FileIDs {
+		err := handleDeleteFile(c, hash)
+		if err != nil {
+			errorDetail := map[string]string{
+				"hash":   hash,
+				"reason": err.Error(),
+			}
+			errorDetails = append(errorDetails, errorDetail)
+			failureCount++
+		} else {
+			successDetail := map[string]string{
+				"hash": hash,
+			}
+			successDetails = append(successDetails, successDetail)
+		}
+	}
+
+	response := map[string]interface{}{
+		"successFiles": successDetails, // 删除成功的文件信息
+		"failureFiles": errorDetails,   // 删除失败的文件信息
+		"failureCount": failureCount,   // 失败的文件数量
+		"message":      "删除处理完成",       // 通用的响应消息
+	}
+
+	utils.Respond(c, http.StatusOK, "result", response)
+}
+
+func getFileIDByHash(c *gin.Context, hash string) (string, string, error) {
+	var fileID string = ""
+	var hash32 string = hash
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+	if len(hash32) == 6 {
+		// 从 Redis 获取上传者信息
+		redisKey := "file_" + hash
+		fileInfo, err := config.RedisClient.HGetAll(context.TODO(), redisKey).Result()
+		if err == redis.Nil {
+			log.Printf("Error retrieving key from Redis: %v", err)
+			return fileID, hash32, err
+		} else if err != nil {
+			log.Printf("Failed to get file ID from Redis: %v", err)
+			return fileID, hash32, err
+		}
+		fileID = fileInfo["file_id"]
+		hash32 = fileInfo["hash"]
+		log.Printf("hash32 and FileID retrieved from Redis for key %s: hash32: %s, FileID: %s", redisKey, hash32, fileID)
+	} else if len(hash32) >= 32 {
+		var file models.File
+		if err := config.MySQLDB.Where("hash = ? AND uploaded_by = ? AND ", hash32, nUserID).
+			First(&file).Error; err != nil {
+			log.Printf("Failed to retrieve file from MySQL: %v", err)
+			return fileID, hash32, err
+		}
+		fileID = file.FileID
+		log.Printf("FileID retrieved from MySQL: FileID: %s", fileID)
+	} else {
+		log.Printf("Error: Hash length is invalid.")
+		return fileID, hash32, errors.New("invalid hash length")
+	}
+	return fileID, hash32, nil
 }
 
 func getFileID(c *gin.Context) (uint, string, string, error) {

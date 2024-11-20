@@ -25,6 +25,9 @@ func SetupRoutes(r *gin.Engine, env string) {
 		middleware.VerifyToken(),
 		middleware.DownloadMiddleware(),
 		services.DownloadFile)
+	r.POST("/files/delete", middleware.VerifyToken(),
+		middleware.DeleteMiddleware(),
+		services.DeleteFile)
 	r.GET("/files/preview/:hash",
 		middleware.VerifyToken(),
 		middleware.PreviewMiddleware(),

@@ -38,6 +38,21 @@ func DownloadMiddleware() gin.HandlerFunc {
 	}
 }
 
+// 获取文件下载量排名
+func DeleteMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		nUserID, _ := utils.AnyToInt64(strUserID)
+		if ok && nUserID > 0 {
+			log.Printf("用户[" + strUserID + "]开始删除")
+		} else {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Delete files not allowed.")
+			return
+		}
+	}
+}
+
 func PreviewMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("userID")
