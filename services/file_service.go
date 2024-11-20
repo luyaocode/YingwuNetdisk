@@ -385,7 +385,7 @@ func handleDeleteFile(c *gin.Context, hash string) error {
 
 func DeleteFile(c *gin.Context) {
 	var requestBody struct {
-		FileIDs []string `json:"fileIDs"`
+		FileIDs []string `json:"files"`
 	}
 	if err := c.ShouldBindJSON(&requestBody); err != nil {
 		utils.Respond(c, http.StatusBadRequest, "error", map[string]string{"message": "Invalid request body"})
@@ -443,7 +443,7 @@ func getFileIDByHash(c *gin.Context, hash string) (string, string, error) {
 		log.Printf("hash32 and FileID retrieved from Redis for key %s: hash32: %s, FileID: %s", redisKey, hash32, fileID)
 	} else if len(hash32) >= 32 {
 		var file models.File
-		if err := config.MySQLDB.Where("hash = ? AND uploaded_by = ? AND ", hash32, nUserID).
+		if err := config.MySQLDB.Where("hash = ? AND uploaded_by = ?", hash32, nUserID).
 			First(&file).Error; err != nil {
 			log.Printf("Failed to retrieve file from MySQL: %v", err)
 			return fileID, hash32, err
