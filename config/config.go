@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"yingwu/gen"
 	"yingwu/models"
 
 	"github.com/go-redis/redis/v8"
@@ -14,6 +15,8 @@ import (
 	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -32,6 +35,8 @@ var (
 	MySQLDB     *gorm.DB
 	MongoClient *mongo.Client
 	RedisClient *redis.Client
+	GrpcConn    *grpc.ClientConn      // gRPC 连接
+	GrpcClient  gen.AuthServiceClient // gRPC 客户端实例
 	ctx         = context.Background()
 
 	MyGithubID string
@@ -97,6 +102,16 @@ func Init() {
 	if err != nil {
 		log.Fatal("Failed to connect to Redis: ", err)
 	}
+
+	// gRPC 初始化
+	grpcAddr := viper.GetString("grpc.address")                                                   // 从配置中获取 gRPC 服务地址
+	GrpcConn, err = grpc.Dial(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials())) // 使用不安全连接
+	if err != nil {
+		log.Fatal("Failed to connect to gRPC server: ", err)
+	}
+
+	// 创建 gRPC 客户端
+	GrpcClient = gen.NewAuthServiceClient(GrpcConn)
 }
 
 func SetLog() {

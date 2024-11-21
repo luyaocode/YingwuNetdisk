@@ -6,11 +6,10 @@ import (
 	"context"
 	"log"
 	"time"
+	"yingwu/config"
 	"yingwu/gen"
 
 	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 var sessionValidationEnabled = true
@@ -35,22 +34,11 @@ func VerifyToken() gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// 使用 grpc.WithTransportCredentials(insecure.NewCredentials()) 代替 grpc.WithInsecure()
-		conn, err := grpc.DialContext(ctx, "api.chaosgomoku.fun:50051", grpc.WithTransportCredentials(insecure.NewCredentials())) // 使用不安全的连接
-		if err != nil {
-			c.Set("userID", "guest")
-			c.Next()
-			return
-		}
-		defer conn.Close()
-
-		// 创建客户端
-		client := gen.NewAuthServiceClient(conn)
-
 		// 调用 VerifyToken 方法
-		resp, err := client.VerifyToken(context.Background(), &gen.VerifyTokenRequest{
+		resp, err := config.GrpcClient.VerifyToken(ctx, &gen.VerifyTokenRequest{
 			Token: token,
 		})
+
 		if err != nil || !resp.GetValid() {
 			c.Set("userID", "guest")
 			c.Next()
