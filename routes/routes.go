@@ -32,6 +32,9 @@ func SetupRoutes(r *gin.Engine, env string) {
 		middleware.VerifyToken(),
 		middleware.PreviewMiddleware(),
 		services.PreviewFile)
+	r.GET("/files/note_info/:hash",
+		middleware.VerifyToken(),
+		services.GetNoteInfo)
 	r.GET("/files", middleware.VerifyToken(),
 		middleware.GetAllFilesMiddleware(),
 		services.GetAllFiles)

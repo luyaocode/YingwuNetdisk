@@ -20,6 +20,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
+	"github.com/jinzhu/gorm"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -572,6 +574,43 @@ func PreviewFile(c *gin.Context) {
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to preview file")
 	}
+}
+
+func getFileInfoByHash(hash string) (models.File, error) {
+	var file models.File
+	if err := config.MySQLDB.Where("hash = ?", hash).First(&file).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			log.Printf("file with hash %s not found", hash)
+		}
+		return file, err
+	}
+	return file, nil
+}
+
+func GetNoteInfo(c *gin.Context) {
+	hash := c.Param("hash")
+	file, err := getFileInfoByHash(hash)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file")
+			return
+		}
+	}
+	if file.NoteID == "" {
+		file.NoteID = uuid.New().String()
+		// 更新文件的 NoteID
+		var file models.File
+		if err := config.MySQLDB.Model(&file).Where("hash = ?", hash).Update("note_id", file.NoteID).Error; err != nil {
+			log.Printf("Error updating file note_id: %v", err)
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to update file note_id")
+			return
+		}
+	}
+	response := map[string]interface{}{
+		"noteID":    file.NoteID,
+		"noteTitle": file.Filename,
+	}
+	utils.Respond(c, http.StatusOK, "result", response)
 }
 
 func GetAllFiles(c *gin.Context) {

@@ -14,6 +14,7 @@ type File struct {
 	Hash       string       `json:"hash"`
 	FileID     string       `json:"-"` // GridFS中的fileID
 	ExpiredAt  sql.NullTime `json:"expired_at"`
+	NoteID     string       `json:"note_id"` // 笔记id
 }
 
 func (File) TableName() string {
