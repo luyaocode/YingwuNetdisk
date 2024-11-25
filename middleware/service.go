@@ -63,6 +63,18 @@ func PreviewMiddleware() gin.HandlerFunc {
 	}
 }
 
+func GetNoteInfoMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		if !ok || strUserID == "" || userID == "guest" || userID == "test" {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve note info.")
+			return
+		}
+		log.Printf("用户[" + strUserID + "]开始查询笔记信息")
+	}
+}
+
 func GetAllFilesMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("userID")
