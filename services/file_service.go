@@ -578,7 +578,7 @@ func PreviewFile(c *gin.Context) {
 
 func getFileInfoByHash(hash string) (models.File, error) {
 	var file models.File
-	if err := config.MySQLDB.Where("hash = ?", hash).First(&file).Error; err != nil {
+	if err := config.MySQLDB.Where("expired_at is NULL AND hash = ?", hash).First(&file).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			log.Printf("file with hash %s not found", hash)
 		}
