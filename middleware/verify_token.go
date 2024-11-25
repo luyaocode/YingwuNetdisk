@@ -5,9 +5,11 @@ package middleware
 import (
 	"context"
 	"log"
+	"net/http"
 	"time"
 	"yingwu/config"
 	"yingwu/gen"
+	"yingwu/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -49,5 +51,17 @@ func VerifyToken() gin.HandlerFunc {
 		// 如果 token 验证通过，将 userID 设置到上下文中
 		c.Set("userID", resp.GetUserId())
 		c.Next()
+	}
+}
+
+func CheckCookieMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+		nUserID, err := utils.AnyToInt64(userID)
+		if nUserID < 0 || err != nil {
+			utils.Respond(c, http.StatusUnauthorized, "error", "Unauthorized.")
+			return
+		}
+		utils.Respond(c, http.StatusOK, "userID", userID)
 	}
 }

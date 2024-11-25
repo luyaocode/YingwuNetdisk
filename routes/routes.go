@@ -17,6 +17,9 @@ func SetupRoutes(r *gin.Engine, env string) {
 	// 全局中间件
 	r.Use(middleware.CORSMiddleware())
 
+	r.GET("/check_cookie",
+		middleware.VerifyToken(),
+		middleware.CheckCookieMiddleware())
 	r.POST("/files/upload",
 		middleware.VerifyToken(),
 		middleware.UploadMiddleware(),
