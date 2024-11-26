@@ -424,6 +424,71 @@ func DeleteFile(c *gin.Context) {
 	utils.Respond(c, http.StatusOK, "result", response)
 }
 
+func handleLockFile(c *gin.Context, hash string) error {
+	status := c.Param("status")
+	// 转换 status 为 bool
+	var locked bool
+	if status == "true" {
+		locked = true
+	} else if status == "false" {
+		locked = false
+	} else {
+		return fmt.Errorf("invalid status value: %s", status)
+	}
+
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+
+	// 执行更新操作
+	if err := config.MySQLDB.Model(&models.File{}).
+		Where("hash = ? AND uploaded_by = ?", hash, nUserID).
+		Update("locked", locked).Error; err != nil {
+		return fmt.Errorf("failed to update locked field: %v", err)
+	}
+
+	return nil
+}
+
+// 锁定/解锁文件
+func LockFile(c *gin.Context) {
+	var requestBody struct {
+		FileIDs []string `json:"files"`
+	}
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		utils.Respond(c, http.StatusBadRequest, "error", map[string]string{"message": "Invalid request body"})
+		return
+	}
+
+	var errorDetails []map[string]string
+	var successDetails []map[string]string
+	failureCount := 0
+	for _, hash := range requestBody.FileIDs {
+		err := handleLockFile(c, hash)
+		if err != nil {
+			errorDetail := map[string]string{
+				"hash":   hash,
+				"reason": err.Error(),
+			}
+			errorDetails = append(errorDetails, errorDetail)
+			failureCount++
+		} else {
+			successDetail := map[string]string{
+				"hash": hash,
+			}
+			successDetails = append(successDetails, successDetail)
+		}
+	}
+
+	response := map[string]interface{}{
+		"successFiles": successDetails, // 操作成功的文件信息
+		"failureFiles": errorDetails,   // 操作失败的文件信息
+		"failureCount": failureCount,   // 失败的文件数量
+		"message":      "操作完成",         // 通用的响应消息
+	}
+
+	utils.Respond(c, http.StatusOK, "result", response)
+}
+
 func getFileIDByHash(c *gin.Context, hash string) (string, string, error) {
 	var fileID string = ""
 	var hash32 string = hash
@@ -543,6 +608,23 @@ func DownloadFile(c *gin.Context) {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file")
 		return
 	}
+	// 查询文件的锁定状态
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+	var file models.File
+	err = config.MySQLDB.Where("id = ?", fid).First(&file).Error
+	if err != nil {
+		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to query file information")
+		return
+	}
+
+	// 如果文件被锁定且上传者不是当前用户，则返回锁定错误
+	if file.Locked && file.UploadedBy != nUserID {
+		utils.Respond(c, http.StatusForbidden, "error", "File is locked and you are not allowed to download it.")
+		return
+	}
+
+	// 处理下载任务
 	err = handleDownloadFile(c, fileID, fileName)
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to download file")
@@ -550,8 +632,6 @@ func DownloadFile(c *gin.Context) {
 	}
 
 	// 将下载记录写入MySQL
-	userID, _ := c.Get("userID")
-	nUserID, _ := utils.AnyToInt64(userID)
 	fileRecord := models.DownFile{
 		FileID:       fid,
 		DownloadedAt: time.Now(),
@@ -565,18 +645,35 @@ func DownloadFile(c *gin.Context) {
 }
 
 func PreviewFile(c *gin.Context) {
-	_, fileID, fileName, err := getFileID(c)
+	fid, fileID, fileName, err := getFileID(c)
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file")
 		return
 	}
+	// 查询文件的锁定状态
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+	var file models.File
+	err = config.MySQLDB.Where("id = ?", fid).First(&file).Error
+	if err != nil {
+		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to query file information")
+		return
+	}
+
+	// 如果文件被锁定且上传者不是当前用户，则返回锁定错误
+	if file.Locked && file.UploadedBy != nUserID {
+		utils.Respond(c, http.StatusForbidden, "error", "File is locked and you are not allowed to download it.")
+		return
+	}
+
+	// 执行下载任务
 	err = handleDownloadFile(c, fileID, fileName)
 	if err != nil {
 		utils.Respond(c, http.StatusInternalServerError, "error", "Failed to preview file")
 	}
 }
 
-func getFileInfoByHash(hash string) (models.File, error) {
+func getForeverFileInfoByHash(hash string) (models.File, error) {
 	var file models.File
 	if err := config.MySQLDB.Where("expired_at is NULL AND hash = ?", hash).First(&file).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -589,7 +686,7 @@ func getFileInfoByHash(hash string) (models.File, error) {
 
 func GetNoteInfo(c *gin.Context) {
 	hash := c.Param("hash")
-	file, err := getFileInfoByHash(hash)
+	file, err := getForeverFileInfoByHash(hash)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve file")
@@ -818,7 +915,7 @@ func GetUploads(c *gin.Context) {
 
 	// 获取总记录数
 	err = config.MySQLDB.Table("files").
-		Where("uploaded_by = ?", userID).
+		Where("uploaded_by = ?", userIDInt).
 		Count(&totalCount).Error
 
 	if err != nil {

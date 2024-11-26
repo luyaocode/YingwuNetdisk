@@ -31,6 +31,9 @@ func SetupRoutes(r *gin.Engine, env string) {
 	r.POST("/files/delete", middleware.VerifyToken(),
 		middleware.DeleteMiddleware(),
 		services.DeleteFile)
+	r.POST("/files/lock/:status", middleware.VerifyToken(),
+		middleware.LockMiddleware(),
+		services.LockFile)
 	r.GET("/files/preview/:hash",
 		middleware.VerifyToken(),
 		middleware.PreviewMiddleware(),

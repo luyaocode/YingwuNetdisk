@@ -38,7 +38,7 @@ func DownloadMiddleware() gin.HandlerFunc {
 	}
 }
 
-// 获取文件下载量排名
+// 删除文件
 func DeleteMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("userID")
@@ -48,6 +48,21 @@ func DeleteMiddleware() gin.HandlerFunc {
 			log.Printf("用户[" + strUserID + "]开始删除")
 		} else {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Delete files not allowed.")
+			return
+		}
+	}
+}
+
+// 锁定/解锁文件
+func LockMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		nUserID, _ := utils.AnyToInt64(strUserID)
+		if ok && nUserID > 0 {
+			log.Printf("用户[" + strUserID + "]开始锁定/解锁")
+		} else {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Lock/unlock files not allowed.")
 			return
 		}
 	}
