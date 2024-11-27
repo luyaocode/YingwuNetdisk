@@ -696,7 +696,6 @@ func GetNoteInfo(c *gin.Context) {
 	if file.NoteID == "" {
 		file.NoteID = uuid.New().String()
 		// 更新文件的 NoteID
-		var file models.File
 		if err := config.MySQLDB.Model(&file).Where("hash = ?", hash).Update("note_id", file.NoteID).Error; err != nil {
 			log.Printf("Error updating file note_id: %v", err)
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to update file note_id")
