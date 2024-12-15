@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"yingwu/config"
@@ -717,6 +718,18 @@ func GetAllFiles(c *gin.Context) {
 	page := c.DefaultQuery("page", "1")     // 默认页码为1
 	limit := c.DefaultQuery("limit", "100") // 默认每页100条记录
 
+	// 获取关键词参数，设置默认值为空字符串
+	keyword := c.DefaultQuery("keyword", "")
+
+	// 限制关键词最大长度为10个字符
+	if len(keyword) > 10 {
+		keyword = keyword[:10] // 截取前10个字符
+	}
+
+	// 去掉多余空格后拆分关键词为子串
+	keyword = strings.TrimSpace(keyword) // 去除前后空格
+	words := strings.Fields(keyword)     // 使用 Fields 拆分关键词为子串
+
 	// 将页面和每页记录数转换为整数
 	pageNum, err := strconv.Atoi(page)
 	if err != nil || pageNum < 1 {
@@ -734,17 +747,26 @@ func GetAllFiles(c *gin.Context) {
 	// 获取用户信息
 	userID, _ := c.Get("userID")
 	if userID == nil || userID == "guest" || userID == "test" { //游客、测试
-		// 查询有限有效期且未过期的所有文件记录
-		if err := config.MySQLDB.Model(&models.File{}).
-			Where("expired_at IS NOT NULL AND expired_at > NOW() AND uploaded_by < 0").
-			Count(&totalCount).Error; err != nil {
+		// 构建查询条件
+		query := config.MySQLDB.Model(&models.File{}).
+			Where("expired_at IS NOT NULL AND expired_at > NOW() AND uploaded_by < 0")
+
+		// 如果提供了关键词，增加 Filename 的模糊匹配条件
+		if len(words) > 0 {
+			// 为每个子串增加模糊匹配条件
+			for _, word := range words {
+				query = query.Where("filename LIKE ?", "%"+word+"%")
+			}
+		}
+
+		// 获取总数
+		if err := query.Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
 			return
 		}
 
-		if err := config.MySQLDB.
-			Where("expired_at IS NOT NULL AND expired_at > NOW() AND uploaded_by < 0").
-			Order("id DESC").
+		// 获取文件列表
+		if err := query.Order("id DESC").
 			Limit(limitNum).
 			Offset(offset).
 			Find(&files).Error; err != nil {
@@ -752,17 +774,26 @@ func GetAllFiles(c *gin.Context) {
 			return
 		}
 	} else if userID == config.MyGithubID { // 系统管理员
-		// 查询所有未过期（包含无限有效期）的文件记录
-		if err := config.MySQLDB.Model(&models.File{}).
-			Where("expired_at IS NULL OR expired_at > NOW()").
-			Count(&totalCount).Error; err != nil {
+		// 构建查询条件
+		query := config.MySQLDB.Model(&models.File{}).
+			Where("expired_at IS NULL OR expired_at > NOW()")
+
+		// 如果提供了关键词，增加 Filename 的模糊匹配条件
+		if len(words) > 0 {
+			// 为每个子串增加模糊匹配条件
+			for _, word := range words {
+				query = query.Where("filename LIKE ?", "%"+word+"%")
+			}
+		}
+
+		// 获取总数
+		if err := query.Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
 			return
 		}
 
-		if err := config.MySQLDB.
-			Where("expired_at IS NULL OR expired_at > NOW()").
-			Order("id DESC").
+		// 获取文件列表
+		if err := query.Order("id DESC").
 			Limit(limitNum).
 			Offset(offset).
 			Find(&files).Error; err != nil {
@@ -771,17 +802,26 @@ func GetAllFiles(c *gin.Context) {
 		}
 	} else { // 普通会员
 		nUserID, _ := utils.AnyToInt64(userID)
-		// 查询所有未过期（包含无限有效期）的，且上传者为本人的文件记录
-		if err := config.MySQLDB.Model(&models.File{}).
-			Where("expired_at IS NOT NULL AND expired_at > NOW() AND (uploaded_by < 0 OR uploaded_by = ?)", nUserID).
-			Count(&totalCount).Error; err != nil {
+		// 构建查询条件
+		query := config.MySQLDB.Model(&models.File{}).
+			Where("expired_at IS NOT NULL AND expired_at > NOW() AND (uploaded_by < 0 OR uploaded_by = ?)", nUserID)
+
+		// 如果提供了关键词，增加 Filename 的模糊匹配条件
+		if len(words) > 0 {
+			// 为每个子串增加模糊匹配条件
+			for _, word := range words {
+				query = query.Where("filename LIKE ?", "%"+word+"%")
+			}
+		}
+
+		// 获取总数
+		if err := query.Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
 			return
 		}
 
-		if err := config.MySQLDB.
-			Where("expired_at IS NOT NULL AND expired_at > NOW() AND (uploaded_by < 0 OR uploaded_by = ?)", nUserID).
-			Order("id DESC").
+		// 获取文件列表
+		if err := query.Order("id DESC").
 			Limit(limitNum).
 			Offset(offset).
 			Find(&files).Error; err != nil {
