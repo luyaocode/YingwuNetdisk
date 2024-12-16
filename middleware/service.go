@@ -68,7 +68,7 @@ func LockMiddleware() gin.HandlerFunc {
 	}
 }
 
-// 设置标签
+// 设置文件信息
 func SetFileInfoMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("userID")
@@ -78,6 +78,21 @@ func SetFileInfoMiddleware() gin.HandlerFunc {
 			log.Printf("用户[" + strUserID + "]开始设置文件信息")
 		} else {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Set file info not allowed.")
+			return
+		}
+	}
+}
+
+// 设置标签
+func SetFileTagsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		nUserID, _ := utils.AnyToInt64(strUserID)
+		if ok && nUserID > 0 {
+			log.Printf("用户[" + strUserID + "]开始设置文件标签")
+		} else {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Set file tags not allowed.")
 			return
 		}
 	}

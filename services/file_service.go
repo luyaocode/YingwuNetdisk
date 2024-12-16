@@ -473,6 +473,28 @@ func handleSetFileInfo(c *gin.Context, hash string, filename, tags string) error
 	return nil
 }
 
+func handleSetFileTags(c *gin.Context, hash string, tags string) error {
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+
+	// 执行更新操作
+	result := config.MySQLDB.Model(&models.File{}).
+		Where("hash = ? AND uploaded_by = ?", hash, nUserID).
+		Updates(map[string]interface{}{
+			"tags": tags,
+		})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update filename and tags: %v", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("no records found to update")
+	}
+
+	return nil
+}
+
 // 锁定/解锁文件
 func LockFile(c *gin.Context) {
 	var requestBody struct {
@@ -526,12 +548,50 @@ func SetFileInfo(c *gin.Context) {
 		return
 	}
 	fileHash := c.Param("hash")
-	log.Printf("hash: %s, filename: %s, tags: %s ", fileHash, info.Filename, info.Tags)
 	if err := handleSetFileInfo(c, fileHash, info.Filename, info.Tags); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	utils.Respond(c, http.StatusOK, "message", "ok")
+}
+
+// 设置文件标签
+func SetFileTags(c *gin.Context) {
+	var requestBody struct {
+		FileIDs []string `json:"files"`
+		Tags    string   `json:"tags"`
+	}
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		utils.Respond(c, http.StatusBadRequest, "error", map[string]string{"message": "Invalid request body"})
+		return
+	}
+	var errorDetails []map[string]string
+	var successDetails []map[string]string
+	failureCount := 0
+	for _, hash := range requestBody.FileIDs {
+		err := handleSetFileTags(c, hash, requestBody.Tags)
+		if err != nil {
+			errorDetail := map[string]string{
+				"hash":   hash,
+				"reason": err.Error(),
+			}
+			errorDetails = append(errorDetails, errorDetail)
+			failureCount++
+		} else {
+			successDetail := map[string]string{
+				"hash": hash,
+			}
+			successDetails = append(successDetails, successDetail)
+		}
+	}
+	response := map[string]interface{}{
+		"successFiles": successDetails, // 操作成功的文件信息
+		"failureFiles": errorDetails,   // 操作失败的文件信息
+		"failureCount": failureCount,   // 失败的文件数量
+		"message":      "操作完成",         // 通用的响应消息
+	}
+
+	utils.Respond(c, http.StatusOK, "result", response)
 }
 
 func getFileIDByHash(c *gin.Context, hash string) (string, string, error) {
