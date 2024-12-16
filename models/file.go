@@ -16,6 +16,7 @@ type File struct {
 	ExpiredAt  sql.NullTime `json:"expired_at"`
 	Locked     bool         `json:"locked"`  // 文件是否被锁定
 	NoteID     string       `json:"note_id"` // 笔记id
+	Tags       string       `json:"tags"`    // 文件标签
 }
 
 func (File) TableName() string {

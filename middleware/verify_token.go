@@ -47,7 +47,7 @@ func VerifyToken() gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("已授权：token=" + token)
+		log.Printf("已授权")
 		// 如果 token 验证通过，将 userID 设置到上下文中
 		c.Set("userID", resp.GetUserId())
 		c.Next()

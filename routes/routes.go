@@ -34,6 +34,9 @@ func SetupRoutes(r *gin.Engine, env string) {
 	r.POST("/files/lock/:status", middleware.VerifyToken(),
 		middleware.LockMiddleware(),
 		services.LockFile)
+	r.POST("/files/file_info/:hash", middleware.VerifyToken(),
+		middleware.SetFileInfoMiddleware(),
+		services.SetFileInfo)
 	r.GET("/files/preview/:hash",
 		middleware.VerifyToken(),
 		middleware.PreviewMiddleware(),

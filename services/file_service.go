@@ -450,6 +450,29 @@ func handleLockFile(c *gin.Context, hash string) error {
 	return nil
 }
 
+func handleSetFileInfo(c *gin.Context, hash string, filename, tags string) error {
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+
+	// 执行更新操作
+	result := config.MySQLDB.Model(&models.File{}).
+		Where("hash = ? AND uploaded_by = ?", hash, nUserID).
+		Updates(map[string]interface{}{
+			"filename": filename,
+			"tags":     tags,
+		})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update filename and tags: %v", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("no records found to update")
+	}
+
+	return nil
+}
+
 // 锁定/解锁文件
 func LockFile(c *gin.Context) {
 	var requestBody struct {
@@ -488,6 +511,27 @@ func LockFile(c *gin.Context) {
 	}
 
 	utils.Respond(c, http.StatusOK, "result", response)
+}
+
+// 设置文件信息
+func SetFileInfo(c *gin.Context) {
+	var info struct {
+		Filename string `json:"filename"`
+		Tags     string `json:"tags"`
+	}
+
+	// 解析 JSON 请求体
+	if err := c.ShouldBindJSON(&info); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+	fileHash := c.Param("hash")
+	log.Printf("hash: %s, filename: %s, tags: %s ", fileHash, info.Filename, info.Tags)
+	if err := handleSetFileInfo(c, fileHash, info.Filename, info.Tags); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	utils.Respond(c, http.StatusOK, "message", "ok")
 }
 
 func getFileIDByHash(c *gin.Context, hash string) (string, string, error) {
