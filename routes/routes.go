@@ -40,6 +40,9 @@ func SetupRoutes(r *gin.Engine, env string) {
 	r.POST("/files/tags", middleware.VerifyToken(),
 		middleware.SetFileTagsMiddleware(),
 		services.SetFileTags)
+	r.GET("/files/tags", middleware.VerifyToken(),
+		middleware.GetAllFileTagsMiddleware(),
+		services.GetAllFileTags)
 	r.GET("/files/preview/:hash",
 		middleware.VerifyToken(),
 		middleware.PreviewMiddleware(),

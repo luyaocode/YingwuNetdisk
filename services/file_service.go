@@ -594,6 +594,42 @@ func SetFileTags(c *gin.Context) {
 	utils.Respond(c, http.StatusOK, "result", response)
 }
 
+func GetAllFileTags(c *gin.Context) {
+	// 调用 getTagsFromMySQL 函数来获取标签及其出现次数
+	tagCountMap, err := getTagsFromMySQL(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	utils.Respond(c, http.StatusOK, "result", tagCountMap)
+}
+
+func getTagsFromMySQL(c *gin.Context) (map[string]int, error) {
+	userID, _ := c.Get("userID")
+	nUserID, _ := utils.AnyToInt64(userID)
+	// 查询所有文件的 tags 字段
+	var files []models.File
+	err := config.MySQLDB.Model(&models.File{}).Select("tags").
+		Where("uploaded_by = ?", nUserID).
+		Find(&files).Error
+	if err != nil {
+		return nil, err
+	}
+	// 使用 map 统计标签的出现次数
+	tagCountMap := make(map[string]int)
+	// 遍历所有文件的 tags 字段
+	for _, file := range files {
+		// 分割 tags 字段中的标签（以空格为分隔符）
+		tags := strings.Fields(file.Tags)
+		// 统计每个标签的出现次数
+		for _, tag := range tags {
+			tagCountMap[tag]++
+		}
+	}
+
+	return tagCountMap, nil
+}
+
 func getFileIDByHash(c *gin.Context, hash string) (string, string, error) {
 	var fileID string = ""
 	var hash32 string = hash
@@ -824,6 +860,7 @@ func GetAllFiles(c *gin.Context) {
 
 	// 获取关键词参数，设置默认值为空字符串
 	keyword := c.DefaultQuery("keyword", "")
+	tag := c.DefaultQuery("tag", "")
 
 	// 限制关键词最大长度为10个字符
 	if len(keyword) > 10 {
@@ -890,6 +927,11 @@ func GetAllFiles(c *gin.Context) {
 			}
 		}
 
+		// 如果提供了tag，增加 tags 的模糊匹配条件
+		if tag != "" {
+			query = query.Where("tags LIKE ?", "%"+tag+"%")
+		}
+
 		// 获取总数
 		if err := query.Count(&totalCount).Error; err != nil {
 			utils.Respond(c, http.StatusInternalServerError, "error", "Failed to retrieve total count")
@@ -916,6 +958,11 @@ func GetAllFiles(c *gin.Context) {
 			for _, word := range words {
 				query = query.Where("filename LIKE ?", "%"+word+"%")
 			}
+		}
+
+		// 如果提供了tag，增加 tags 的模糊匹配条件
+		if tag != "" {
+			query = query.Where("tags LIKE ?", "%"+tag+"%")
 		}
 
 		// 获取总数

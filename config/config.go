@@ -37,7 +37,7 @@ var (
 	RedisClient *redis.Client
 	GrpcConn    *grpc.ClientConn      // gRPC 连接
 	GrpcClient  gen.AuthServiceClient // gRPC 客户端实例
-	ctx         = context.Background()
+	Ctx         = context.Background()
 
 	MyGithubID string
 )
@@ -86,7 +86,7 @@ func Init() {
 	// MongoDB 初始化
 	mongoURI := viper.GetString("mongodb.uri")
 	mongoOptions := options.Client().ApplyURI(mongoURI)
-	MongoClient, err = mongo.Connect(ctx, mongoOptions)
+	MongoClient, err = mongo.Connect(Ctx, mongoOptions)
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB: ", err)
 	}
@@ -98,7 +98,7 @@ func Init() {
 	}
 
 	RedisClient = redis.NewClient(redisOptions)
-	_, err = RedisClient.Ping(ctx).Result()
+	_, err = RedisClient.Ping(Ctx).Result()
 	if err != nil {
 		log.Fatal("Failed to connect to Redis: ", err)
 	}

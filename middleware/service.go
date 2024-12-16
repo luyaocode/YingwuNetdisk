@@ -98,6 +98,21 @@ func SetFileTagsMiddleware() gin.HandlerFunc {
 	}
 }
 
+// 获取所有标签
+func GetAllFileTagsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+		strUserID, ok := userID.(string)
+		nUserID, _ := utils.AnyToInt64(strUserID)
+		if ok && nUserID > 0 {
+			log.Printf("用户[" + strUserID + "]开始查询文件标签")
+		} else {
+			utils.Respond(c, http.StatusInternalServerError, "error", "Get all file tags not allowed.")
+			return
+		}
+	}
+}
+
 func PreviewMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("userID")
